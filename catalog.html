@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Card Catalog</title>
+<style>
+  :root {
+    --black: #0d0812;
+    --panel: #1a1026;
+    --purple: #9d4edd;
+    --deep-purple: #5a189a;
+    --pink: #ff4da6;
+    --text: #f3e9ff;
+    --muted: #b9a3d6;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 24px;
+    background: var(--black);
+    color: var(--text);
+    font-family: Georgia, serif;
+  }
+
+  h1 {
+    margin: 0 0 20px;
+    color: var(--pink);
+    font-size: 2rem;
+  }
+
+  h2 {
+    margin: 0 0 12px;
+    font-size: 1.1rem;
+    color: var(--purple);
+    border-bottom: 2px solid var(--pink);
+    padding-bottom: 6px;
+  }
+
+  /* Layout: Query + History on the left, Results on the right, Full catalogue below */
+  body {
+    display: grid;
+    gap: 18px;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "title title"
+      "query results"
+      "history results"
+      "full full";
+  }
+  h1 { grid-area: title; }
+  #query { grid-area: query; }
+  #results { grid-area: results; }
+  #history { grid-area: history; }
+  #full { grid-area: full; }
+
+  section {
+    background: var(--panel);
+    border: 1px solid var(--deep-purple);
+    border-radius: 6px;
+    padding: 18px;
+  }
+
+  input, select {
+    padding: 9px 10px;
+    background: var(--black);
+    color: var(--text);
+    border: 1px solid var(--deep-purple);
+    border-radius: 4px;
+    font: inherit;
+  }
+
+  button {
+    padding: 9px 16px;
+    background: var(--purple);
+    color: var(--black);
+    border: none;
+    border-radius: 4px;
+    font: inherit;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  button:hover { background: var(--pink); }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  :focus-visible { outline: 3px solid var(--pink); outline-offset: 2px; }
+
+  /* For the book cards we'll fill in later */
+  .card {
+    background: var(--black);
+    border: 1px solid var(--deep-purple);
+    border-left: 4px solid var(--pink);
+    border-radius: 4px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+
+  /* Stack everything on narrow screens */
+  @media (max-width: 760px) {
+    body {
+      grid-template-columns: 1fr;
+      grid-template-areas: "title" "query" "results" "history" "full";
+    }
+  }
+  #fullGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+}
+#fullGrid .card { margin-bottom: 0; }
+details {
+  margin-top: 18px;
+  border-top: 1px solid var(--deep-purple);
+  padding-top: 12px;
+}
+summary { cursor: pointer; font-weight: bold; color: var(--pink); }
+label { color: var(--muted); font-size: 0.9rem; }
+.warn { color: var(--pink); }
+.ok { color: #7dffb3; }
+</style>
+</head>
+<body>
+  <h1>Card Catalog</h1>
+
+  <section id="query">
+    <h2>Query</h2>
+    <select id="mode">
+      <option value="title">Title</option>
+      <option value="starts">Starts with</option>
+      <option value="genre">Genre</option>
+      <option value="author">Author</option>
+      <option value="sorted">Author (sorted)</option>
+    </select>
+    <input id="term" type="text" placeholder="Type a search term">
+    <button id="go">Search</button>
+    <p id="searchMsg"></p>
+    <details id="addBox">
+  <summary>Add a book to the catalogue</summary>
+  <p><label for="fTitle">Title (required)</label><br>
+     <input id="fTitle" type="text" autocomplete="off"></p>
+  <p><label for="fAuthor">Author (required)</label><br>
+     <input id="fAuthor" type="text" autocomplete="off"></p>
+  <p><label for="fGenre">Genre</label><br>
+     <input id="fGenre" type="text" autocomplete="off"></p>
+  <button id="save">Save book</button>
+  <p id="addMsg"></p>
+</details>
+  </section>
+
+  <section id="results">
+    <h2>Results</h2>
+    <div id="resultsBody"></div>
+  </section>
+
+  <section id="history">
+    <h2>Search history</h2>
+    <button id="back" aria-label="Previous search">&larr; Back</button>
+    <button id="fwd" aria-label="Next search">Forward &rarr;</button>
+    <p id="histLabel">No searches yet</p>
+  </section>
+
+  
+    <section id="full">
+  <h2>Full catalogue</h2>
+  <p id="count"></p>
+  <div id="fullGrid"></div>
+  </section>
+    
+</body>
+<script>
+  // 1. The data: an array of book objects
+  const books = [
+    { title: "The Hobbit", author: "Tolkien, J.R.R.", genre: "Fantasy" },
+    { title: "The Fellowship of the Ring", author: "Tolkien, J.R.R.", genre: "Fantasy" },
+    { title: "Pride and Prejudice", author: "Austen, Jane", genre: "Romance" },
+    { title: "Emma", author: "Austen, Jane", genre: "Romance" },
+    { title: "Persuasion", author: "Austen, Jane", genre: "Romance" },
+    { title: "Things Fall Apart", author: "Achebe, Chinua", genre: "Fiction" },
+    { title: "Weep Not, Child", author: "Ngugi wa Thiong'o", genre: "Fiction" },
+    { title: "Dune", author: "Herbert, Frank", genre: "Science fiction" },
+    { title: "Neuromancer", author: "Gibson, William", genre: "Science fiction" },
+    { title: "A Brief History of Time", author: "Hawking, Stephen", genre: "Science" }
+  ];
+  let searchHistory = [];   // every search entry, in order
+let position = -1;        // which entry is currently shown (-1 = none yet)
+
+  // 2. A helper that turns one book into HTML (we'll reuse it for search results)
+  function cardHTML(book) {
+    return `<div class="card">
+      <strong>${book.title}</strong><br>
+      <span>${book.author} · ${book.genre || "No genre"}</span>
+    </div>`;
+  }
+
+  // 3. Draw every book into the Full Catalogue
+  function renderFull() {
+    document.getElementById("count").textContent =
+      books.length + " books in the catalogue";
+    document.getElementById("fullGrid").innerHTML =
+      books.map(cardHTML).join("");
+  }
+
+  // 4. Run it once when the page loads
+  renderFull();
+  // Lowercase and trim, so searches are case-insensitive (FR-1.5)
+function norm(text) {
+  return text.trim().toLowerCase();
+}
+
+const modeNames = {
+  title: "Title",
+  starts: "Starts with",
+  genre: "Genre",
+  author: "Author",
+  sorted: "Author (sorted)"
+};
+
+// Find the matching books for a mode and term (FR-1.1, FR-1.2)
+function runSearch(mode, term) {
+  const t = norm(term);
+
+  let found = books.filter(function (b) {
+    if (mode === "title")  return norm(b.title).includes(t);
+    if (mode === "starts") return norm(b.title).startsWith(t);
+    if (mode === "genre")  return norm(b.genre || "").includes(t);
+    return norm(b.author).includes(t);   // "author" and "sorted"
+  });
+
+  if (mode === "sorted") {
+    found = found.slice().sort(function (a, b) {
+      return a.author.localeCompare(b.author) || a.title.localeCompare(b.title);
+    });
+  }
+  return found;
+}
+
+// Draw the Results panel. Pass null to show the starting prompt (FR-1.6)
+function showResults(entry) {
+  const box = document.getElementById("resultsBody");
+
+  if (!entry) {
+    box.innerHTML = `<p>Search the catalogue, or browse every book.</p>
+      <button id="browse">Browse full catalogue</button>`;
+    document.getElementById("browse").onclick = function () {
+      document.getElementById("full").scrollIntoView({ behavior: "smooth" });
+    };
+    return;
+  }
+
+  // No matches (FR-1.4)
+  if (entry.results.length === 0) {
+    box.innerHTML = `<p>No results found for "${entry.term}" (${modeNames[entry.mode]}). Try a different term or mode.</p>`;
+    return;
+  }
+
+  // Matches, each marked as in the catalogue (FR-1.3)
+  const n = entry.results.length;
+  box.innerHTML =
+    `<p>${n} result${n > 1 ? "s" : ""} for "${entry.term}" (${modeNames[entry.mode]})</p>` +
+    entry.results.map(function (b) {
+      return cardHTML(b).replace(
+        "<strong>",
+        '<small style="float:right;color:var(--pink)">In catalogue</small><strong>'
+      );
+    }).join("");
+}
+
+// Run when the user clicks Search or presses Enter
+function doSearch() {
+  const term = document.getElementById("term").value;
+  const msg = document.getElementById("searchMsg");
+
+  if (norm(term) === "") {
+    msg.textContent = "Type a search term first.";
+    return;
+  }
+  msg.textContent = "";
+
+  const mode = document.getElementById("mode").value;
+  const entry = { mode: mode, term: term.trim(), results: runSearch(mode, term) };
+
+  // FR-3.1: record the search.
+  // Drop any "forward" entries first, exactly like a browser does.
+  searchHistory = searchHistory.slice(0, position + 1);
+  searchHistory.push(entry);
+  position = searchHistory.length - 1;
+
+  showResults(entry);
+  updateHistoryUI();
+}
+
+// FR-3.4: disable an arrow when there is nowhere to go
+function updateHistoryUI() {
+  document.getElementById("back").disabled = position <= 0;
+  document.getElementById("fwd").disabled = position >= searchHistory.length - 1;
+
+  const label = document.getElementById("histLabel");
+  if (position < 0) {
+    label.textContent = "No searches yet";
+  } else {
+    const e = searchHistory[position];
+    label.textContent = `Search ${position + 1} of ${searchHistory.length}: ${modeNames[e.mode]}, "${e.term}"`;
+  }
+}
+
+// FR-3.2 and FR-3.3: move through history and show that search's results
+function stepHistory(direction) {
+  const next = position + direction;
+  if (next < 0 || next >= searchHistory.length) return;
+
+  position = next;
+  const e = searchHistory[position];
+  document.getElementById("mode").value = e.mode;   // restore the query boxes too
+  document.getElementById("term").value = e.term;
+  showResults(e);
+  updateHistoryUI();
+}
+
+document.getElementById("back").onclick = function () { stepHistory(-1); };
+document.getElementById("fwd").onclick  = function () { stepHistory(1); };
+
+updateHistoryUI();   // sets both arrows to disabled on page load
+document.getElementById("go").onclick = doSearch;
+document.getElementById("term").addEventListener("keydown", function (e) {
+  if (e.key === "Enter") doSearch();
+});
+
+// Show the starting prompt when the page loads
+showResults(null);
+function saveBook() {
+  const title  = document.getElementById("fTitle").value.trim();
+  const author = document.getElementById("fAuthor").value.trim();
+  const genre  = document.getElementById("fGenre").value.trim();
+  const msg    = document.getElementById("addMsg");
+
+  // FR-2.2: title and author are mandatory
+  if (title === "" || author === "") {
+    msg.className = "warn";
+    msg.textContent = "Title and author are required before saving.";
+    return;
+  }
+
+  // FR-2.3: warn if the book already exists
+  const exists = books.some(function (b) {
+    return norm(b.title) === norm(title) && norm(b.author) === norm(author);
+  });
+  if (exists) {
+    msg.className = "warn";
+    msg.textContent = `"${title}" by ${author} is already in the catalogue.`;
+    return;
+  }
+
+  // Save it, then redraw the Full Catalogue (FR-4.3)
+  books.push({ title: title, author: author, genre: genre });
+  renderFull();
+
+  // FR-2.4: confirmation, then clear the form
+  msg.className = "ok";
+  msg.textContent = `Saved "${title}" to the catalogue.`;
+  document.getElementById("fTitle").value = "";
+  document.getElementById("fAuthor").value = "";
+  document.getElementById("fGenre").value = "";
+}
+
+document.getElementById("save").onclick = saveBook;
+</script>
+</html>
